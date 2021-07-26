@@ -339,15 +339,8 @@ void setup() {
 
 bool buttonState = HIGH;
 bool previousButtonState = HIGH;
-long previousMillis = 0;
-const long checkInterval = 5000;
 unsigned long pressedTime = millis();
-void loop() {
-  MDNS.update();
-
-  httpServer.handleClient();
-
-  buttonState = digitalRead(BUTTON_PIN);
+void handleButtonPresses(int buttonState) {
   if (buttonState == LOW && previousButtonState == HIGH) { // long press handling, reset settings https://forum.arduino.cc/index.php?topic=276789.msg1947963#msg1947963
     Serial.println("Button pressed (longpress handling)");
     pressedTime = millis();
@@ -359,11 +352,45 @@ void loop() {
     delay(500);
     ESP.restart();
   }
+}
+
+#define OFFSET 7.5
+#define AMPLITUDE 7.5 // oscillate between 0 and 15
+#define PERIOD 2500 // milliseconds
+#define OMEGA 2*PI/PERIOD
+#define PHASE 0
+void fadeDisplay(unsigned long t) {
+  uint8_t brightness = round(OFFSET + AMPLITUDE * (cos(OMEGA * t) + PHASE));
+  Serial.print("fadeDisplay ");
+  Serial.print(t);
+  Serial.print(" ");
+  Serial.println(brightness);
+  P.setIntensity(brightness);
+}
+
+
+unsigned long monCulSurLaCommode = 0;
+
+unsigned long fadeDisplayMillis = millis();
+long previousMillis = 0;
+const long checkInterval = 5000;
+void loop() {
+  MDNS.update();
+
+  httpServer.handleClient();
+
+  buttonState = digitalRead(BUTTON_PIN);
+  handleButtonPresses(buttonState);
+
   unsigned long currentMillis = millis();
+  long checkSpaceDelayMillis = 0;
   if (currentMillis - previousMillis > checkInterval) {
     previousMillis = currentMillis;
     spaceIsOpen = checkSpaceIsOpen();
+    checkSpaceDelayMillis = millis() - currentMillis; // try to smooth the fade animation when HTTP calls happen
+    
   }
+
   if (P.displayAnimate()) {
     if (spaceIsOpen) {
       P.displayText(displayedMessage.c_str(), PA_CENTER, P.getSpeed(), P.getPause(), PA_NO_EFFECT, PA_NO_EFFECT);
@@ -371,6 +398,16 @@ void loop() {
       P.displayText(".", PA_CENTER, P.getSpeed(), P.getPause(), PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
+  if (checkSpaceDelayMillis > 0) {
+    Serial.print("millis | checkSpaceDelayMillis ");
+    Serial.print(millis());
+    Serial.print(" | ");
+    Serial.println(checkSpaceDelayMillis);
+  }
+  fadeDisplayMillis = millis() - fadeDisplayMillis - checkSpaceDelayMillis + millis();
+
+  monCulSurLaCommode+=2; // should be using millis()-based var, fadeDisplayMillis increment taking into account checkSpaceDelayMillis each time
+  fadeDisplay(monCulSurLaCommode);
 
   previousButtonState = buttonState;
 }
